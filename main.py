@@ -1,11 +1,16 @@
-import itertools
+import sys
+from pathlib import Path
+
+from packages.prepare_df import generate_combinations, get_periods_list, prepare_df
+
+sys.path.append(str(Path(__file__).parent))
 from pathlib import Path
 import dash_dangerously_set_inner_html
 import pandas as pd
 from packages.account_balances import construct_params
 from packages.config import base_api_url, duckdb_db_path, username, password
-from packages.endpoints import  balances_endpoint
-from packages.load_env_vars import load_environment_variables, get_env_variable
+from packages.duck_select import execute_sql_query
+from packages.endpoints import balances_endpoint
 from packages.persist_metadata import construct_api_url, fetch_api_data, load_lg_list_to_dataframe
 import duckdb
 import dash
@@ -31,14 +36,14 @@ ldf: pd.DataFrame = ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=
 
 # load ledgers and currencies from db
 df_ledgers: pd.DataFrame = pd.DataFrame()
-df_currencies: pd.DataFrame = pd.DataFrame()
+df_currencies = execute_sql_query("SELECT CurrencyCode, Name FROM currencies")
+
 con: duckdb.DuckDBPyConnection = None
 try:
     con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
     try:
         df_ledgers = con.execute(
             "SELECT lg.LedgerId, lg.Name, lg.CurrencyCode, lg.accountedperiodtype FROM ledgers lg where lg.LedgerId in (select distinct ledger_id from ldf)").fetchdf()
-        df_currencies = con.execute("SELECT CurrencyCode, Name FROM currencies").fetchdf()
     except duckdb.Error as e:
         print(f"Error executing DuckDB query: {str(e)}")
         raise
@@ -189,67 +194,7 @@ def load_data_on_page_load(_):
     v_ldf_dict = v_ldf.to_dict('records')
     logging.info(f"Config file: {v_l_file_path}' loaded.")
     logging.info(v_ldf.iloc[0].to_dict())
-    # load ledgers and currencies from db
-    v_con: duckdb.DuckDBPyConnection = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
-    try:
-        v_df_ledgers = v_con.execute(
-            "SELECT lg.LedgerId, lg.Name, lg.CurrencyCode, lg.accountedperiodtype FROM ledgers lg where lg.LedgerId in (select distinct ledger_id from v_ldf)").fetchdf()
-        v_df_currencies = v_con.execute("SELECT CurrencyCode, Name FROM currencies").fetchdf()
-    finally:
-        v_con.close()
     return v_ldf_dict
-
-
-def generate_combinations(values: list, ids: list, ledger_id: int, xldf: pd.DataFrame) -> list:
-    """
-    :param xldf:
-    :param ledger_id:
-    :param values:
-    :param ids:
-    :return:
-    """
-    predefined_order: list = xldf[xldf['ledger_id'] == ledger_id]["VALUE_SET_NAME"].tolist()
-    # Define the predefined order of indices
-    # Create a mapping from index to values
-    index_to_values: dict = {}
-    for dropdown_id, value in zip(ids, values):
-        index = dropdown_id['index']
-        if value is None or not value:  # Checks if value is None or if value is an empty list
-            index_to_values[index] = ['%']
-        else:
-            index_to_values[index] = value  # value is already a list
-    # Arrange values in the predefined order
-    positions_values = []
-    for index in predefined_order:
-        values_list = index_to_values.get(index, ['%'])  # Default to '%' if index not found
-        positions_values.append(values_list)
-    # Generate all combinations
-    combinations = list(itertools.product(*positions_values))
-    # Format combinations into strings
-    combinations_strings = ['.'.join(comb) for comb in combinations]
-    return combinations_strings
-
-
-def get_periods_list(p_ledger_id: str, p_perod_fom: str, p_period_to: str) -> list:
-    # Fetch ledger accountedperiodtype based on selected ID
-    accountedperiodtype: str = df_ledgers[df_ledgers['LedgerId'] == p_ledger_id].iloc[0]['AccountedPeriodType']
-
-    # load ledgers and currencies from db
-    con: duckdb.DuckDBPyConnection = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
-    try:
-        query = """
-                SELECT PeriodNameId 
-                FROM accounting_periods
-                WHERE StartDate >= (SELECT StartDate FROM accounting_periods WHERE PeriodNameId=?)
-                AND EndDate <= (SELECT EndDate FROM accounting_periods WHERE PeriodNameId=?)
-                AND PeriodType = ?
-                ORDER BY StartDate
-            """
-        periods: list = con.execute(query, [p_perod_fom, p_period_to, accountedperiodtype]).fetchnumpy()[
-            'PeriodNameId'].tolist()
-        return periods
-    finally:
-        con.close()
 
 
 @app.callback(
@@ -269,7 +214,7 @@ def get_periods_list(p_ledger_id: str, p_perod_fom: str, p_period_to: str) -> li
     State('df_ledgers-store', 'data'),
     prevent_initial_call=True
 )
-def display_flex_values(n_clicks, values, ids, ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
+def display_flex_values(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
                         p_balance_type, p_from_currency, p_ldf, p_df_ledgers):
     """
     Shows datatable on button click
@@ -281,115 +226,39 @@ def display_flex_values(n_clicks, values, ids, ledger_id, p_period_from, p_perio
     :param p_flex_mode:
     :param p_period_to:
     :param p_period_from:
-    :param ledger_id:
+    :param p_ledger_id:
     :param n_clicks:
-    :param values:
-    :param ids:
+    :param p_values:
+    :param p_ids:
     :return:
     """
     if n_clicks is None or n_clicks == 0:
         return "Click the button to list chosen values."
 
-    if not values or not ids:
+    if not p_values or not p_ids:
         return "No values selected."
-    all_balances = []
-    # Fetch ledger name based on selected ID
-    xdf_ledgers = pd.DataFrame(p_df_ledgers)
-    ledger_name: str = xdf_ledgers[xdf_ledgers['LedgerId'] == ledger_id].iloc[0]['Name']
-    # Generate ac flex combinations
-    combinations_strings = generate_combinations(values, ids, ledger_id, pd.DataFrame(p_ldf))
-    logging.info(combinations_strings)
-    # Fetch periods list
-    periods_list: list = get_periods_list(ledger_id, p_period_from, p_period_to)
-
-    if p_balance_type == 'From':
-        balance_type = f'From {p_from_currency}'
-    else:
-        balance_type = p_balance_type
-
-    logging.info(balance_type)
-
-    for period in periods_list:
-        for combination in combinations_strings:
-            balances_api_url: str = construct_api_url(base_api_url, balances_endpoint)
-            balances_list: list = fetch_api_data(balances_api_url, username, password,
-                                                 construct_params(combination, period, p_currency,
-                                                                  ledger_name, p_flex_mode, balance_type))
-            all_balances.append(balances_list)
 
     patched_children = Patch()
     patched_children.clear()  # remove previous selections
 
-    flattened_balances: list = list(chain.from_iterable(all_balances))
-    if all_balances and all_balances != [[]]:
-        df = pd.DataFrame(flattened_balances)
-        if p_flex_mode == 'Detail':
-            # First, extract the index values from the ids parameter to use as column names
-            # column_names = [item['index'] for item in ids]
+    df = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to, p_balance_type,
+                    p_from_currency, p_currency, p_flex_mode)
 
-            # Extract value_set_description ordered by segment_number for the specific ledger_id
-            xldf = pd.DataFrame(p_ldf)
-            column_names = xldf[xldf['ledger_id'] == ledger_id].sort_values(by='SEGMENT_NUMBER')[
-                'VALUE_SET_DESCRIPTION'].tolist()
+    new_element = html.Div([
 
-            split_columns = df['DetailAccountCombination'].str.split('.', expand=True)
-            # Assign the extracted column names
-            split_columns.columns = column_names
+        dag.AgGrid(
+            id="main-table",
+            rowData=df.to_dict("records"),
+            columnDefs=[{"field": i} for i in df.columns],
+            className="ag-theme-alpine-light"
+        ),
+        dcc.Loading(
+            id="loading-1",
+            type="default"
+        )
 
-            df = pd.concat([df, split_columns], axis=1)
-            # Now reorder the columns to put split columns right after DetailAccountCombination
-            # Get all column names
-            all_columns = df.columns.tolist()
-            # Remove the new columns from the list
-            for col in column_names:
-                all_columns.remove(col)
-            # Find the index of DetailAccountCombination
-            detail_acc_idx = all_columns.index('DetailAccountCombination')
-            # Create new column order
-            new_column_order = all_columns[:(detail_acc_idx + 1)] + column_names + all_columns[
-                                                                                   (detail_acc_idx + 1):]
-            # Reindex the dataframe with the new column order
-            df = df[new_column_order]
-            df[['PeriodActivity', 'BeginningBalance', 'EndingBalance']] = df[
-                ['PeriodActivity', 'BeginningBalance', 'EndingBalance']].apply(pd.to_numeric, errors='coerce')
-        new_element = html.Div([
-
-            dag.AgGrid(
-                id="main-table",
-                rowData=df.to_dict("records"),
-                columnDefs=[{"field": i} for i in df.columns],
-                className="ag-theme-alpine-light"
-            ),
-            dcc.Loading(
-                id="loading-1",
-                type="default"
-            )
-
-        ])
-        patched_children.append(new_element)
-
-    # Initialize a list to hold the Divs
-    content = []
-    # print(list(zip(ids, values)))
-    # Iterate over the ids and values simultaneously
-    """for dropdown_id, value in zip(ids, values):
-        index = dropdown_id['index']  # Extract the 'index' from the ID dict
-
-        # Handle cases where value might be a list (multi=True)
-        if isinstance(value, list):
-            value_str = ', '.join([str(v) for v in value if v is not None])
-        elif value is not None:
-            value_str = str(value)
-        else:
-            value_str = "No selection"
-    """
-    # Create a Div for each dropdown's key and value
-    # content.append(
-    #    html.Div(f"Dropdown {index}: Selected values: {value_str}")
-    # )
-
-    # Return a parent Div containing all individual Divs
-    # return html.Div(content), patched_children
+    ])
+    patched_children.append(new_element)
     return patched_children
 
 
@@ -410,7 +279,7 @@ def display_flex_values(n_clicks, values, ids, ledger_id, p_period_from, p_perio
     State('df_ledgers-store', 'data'),
     prevent_initial_call=True
 )
-def display_pyg_values(n_clicks, values, ids, ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
+def display_pyg_values(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
                        p_balance_type, p_from_currency, p_ldf, p_df_ledgers):
     """
     Shows pygwalker on button click
@@ -422,97 +291,33 @@ def display_pyg_values(n_clicks, values, ids, ledger_id, p_period_from, p_period
     :param p_flex_mode:
     :param p_period_to:
     :param p_period_from:
-    :param ledger_id:
+    :param p_ledger_id:
     :param n_clicks:
-    :param values:
-    :param ids:
+    :param p_values:
+    :param p_ids:
     :return:
     """
     if n_clicks is None or n_clicks == 0:
         return "Click the button to list chosen values."
 
-    if not values or not ids:
+    if not p_values or not p_ids:
         return "No values selected."
 
-    all_balances = []
-    # Fetch ledger name based on selected ID
-    # ledger_name: str = df_ledgers[df_ledgers['LedgerId'] == ledger_id].iloc[0]['Name']
-    # Fetch ledger name based on selected ID
-    xdf_ledgers = pd.DataFrame(p_df_ledgers)
-    ledger_name: str = xdf_ledgers[xdf_ledgers['LedgerId'] == ledger_id].iloc[0]['Name']
-
-    combinations_strings = generate_combinations(values, ids, ledger_id, pd.DataFrame(p_ldf))
-    logging.info(combinations_strings)
-
-    # Fetch periods list
-    periods_list: list = get_periods_list(ledger_id, p_period_from, p_period_to)
-
-    if p_balance_type == 'From':
-        balance_type = f'From {p_from_currency}'
-    else:
-        balance_type = p_balance_type
-
-    logging.info(balance_type)
-
-    for period in periods_list:
-        for combination in combinations_strings:
-            balances_api_url: str = construct_api_url(base_api_url, balances_endpoint)
-            balances_list: list = fetch_api_data(balances_api_url, username, password,
-                                                 construct_params(combination, period, p_currency,
-                                                                  ledger_name, p_flex_mode, balance_type))
-            all_balances.append(balances_list)
-
-    flattened_balances: list = list(chain.from_iterable(all_balances))
+    df = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to, p_balance_type,
+                    p_from_currency, p_currency, p_flex_mode)
 
     patched_children = Patch()
     patched_children.clear()  # remove previous selections
 
-    if all_balances and all_balances != [[]]:
-        df = pd.DataFrame(flattened_balances)
-        if p_flex_mode == 'Detail':
-            # First, extract the index values from the ids parameter to use as column names
-            # column_names = [item['index'] for item in ids]
+    # html_code = pyg.walk(df,  use_kernel_calc=True, return_html=True).to_html()
+    html_code = pyg.walk(df, return_html=True).to_html()
 
-            # column_names = ldf[ldf['ledger_id'] == ledger_id].sort_values(by='SEGMENT_NUMBER')['VALUE_SET_DESCRIPTION'].tolist()
-            # Extract value_set_description ordered by segment_number for the specific ledger_id
-            xldf = pd.DataFrame(p_ldf)
-            column_names = xldf[xldf['ledger_id'] == ledger_id].sort_values(by='SEGMENT_NUMBER')[
-                'VALUE_SET_DESCRIPTION'].tolist()
+    new_element = html.Div([
+        dash_dangerously_set_inner_html.DangerouslySetInnerHTML(html_code)
+    ])
 
-            split_columns = df['DetailAccountCombination'].str.split('.', expand=True)
-            # Assign the extracted column names
-            split_columns.columns = column_names
+    patched_children.append(new_element)
 
-            df = pd.concat([df, split_columns], axis=1)
-            # Now reorder the columns to put split columns right after DetailAccountCombination
-            # Get all column names
-            all_columns = df.columns.tolist()
-            # Remove the new columns from the list
-            for col in column_names:
-                all_columns.remove(col)
-            # Find the index of DetailAccountCombination
-            detail_acc_idx = all_columns.index('DetailAccountCombination')
-            # Create new column order
-            new_column_order = all_columns[:(detail_acc_idx + 1)] + column_names + all_columns[
-                                                                                   (detail_acc_idx + 1):]
-            # Reindex the dataframe with the new column order
-            df = df[new_column_order]
-            # df['PeriodActivity'] = pd.to_numeric(df['PeriodActivity'])  # Converts to float
-
-            df[['PeriodActivity', 'BeginningBalance', 'EndingBalance']] = df[
-                ['PeriodActivity', 'BeginningBalance', 'EndingBalance']].apply(pd.to_numeric, errors='coerce')
-
-        # html_code = pyg.walk(df,  use_kernel_calc=True, return_html=True).to_html()
-        html_code = pyg.walk(df, return_html=True).to_html()
-
-        new_element = html.Div([
-            dash_dangerously_set_inner_html.DangerouslySetInnerHTML(html_code)
-        ])
-
-        patched_children.append(new_element)
-
-    # Initialize a list to hold the Divs
-    content = []
     return patched_children
 
 
@@ -676,15 +481,15 @@ def get_flex_values(flex_table: str) -> list:
     """
     # Connect to DuckDB
     try:
-        con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
+        v_con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
     except Exception as e:
         # Handle connection errors
         logging.error(f"Error connecting to DuckDB: {e}")
         raise PreventUpdate
     try:
         query = f'SELECT VALUE, DESCRIPTION FROM {flex_table}'
-        val_df = con.execute(query).fetchdf()
-        con.close()
+        val_df = v_con.execute(query).fetchdf()
+        v_con.close()
 
         if val_df.empty:
             return []  # Return empty list if no flex values found
@@ -697,7 +502,7 @@ def get_flex_values(flex_table: str) -> list:
         logging.error(f"Error retrieving flex values: {e}")
         return []
     finally:
-        con.close()
+        v_con.close()
 
 
 if __name__ == "__main__":
