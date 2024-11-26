@@ -1,23 +1,15 @@
 import itertools
 from pathlib import Path
-
 import dash_dangerously_set_inner_html
 import pandas as pd
-
 from packages.account_balances import construct_params
-from packages.endpoints import ledgers_endpoint, ledgers_query_params, ledgers_table, periods_endpoint, \
-    periods_query_params, segments_endpoint, segments_query_params, balances_endpoint, currencies_endpoint, \
-    currencies_query_params
+from packages.config import base_api_url, duckdb_db_path, username, password
+from packages.endpoints import  balances_endpoint
 from packages.load_env_vars import load_environment_variables, get_env_variable
-from packages.load_metadata import load_metadata
-from packages.persist_metadata import construct_api_url, fetch_api_data, \
-    save_dataframe_to_duckdb, load_lg_list_to_dataframe
-
-import numpy as np
+from packages.persist_metadata import construct_api_url, fetch_api_data, load_lg_list_to_dataframe
 import duckdb
-
 import dash
-from dash import dcc, html, Patch, dash_table
+from dash import dcc, html, Patch
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 import logging
@@ -29,33 +21,37 @@ import pygwalker as pyg
 # Configure logging to output to console with level INFO
 logging.basicConfig(level=logging.INFO)
 
-load_environment_variables()
-
-# Retrieve variables from environment
-base_api_url: str = get_env_variable('BASE_API_URL')
-username: str = get_env_variable('ORACLE_FUSION_USERNAME')
-password: str = get_env_variable('ORACLE_FUSION_PASSWORD')
-verify_ssl = get_env_variable('VERIFY_SSL', required=False)
-duckdb_db_path: str = get_env_variable('DUCKDB_DB_PATH', required=False) or 'ledgers.duckdb'
-
 # Load json with ledgers definitions
 l_file_path: str = 'lg_list.json'  # Replace with your file path if different
 ldf: pd.DataFrame = load_lg_list_to_dataframe(l_file_path)
 ldf: pd.DataFrame = ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=False)
 
 # todo
-load_metadata(ldf, base_api_url, username, password, duckdb_db_path)
+# load_metadata(ldf, base_api_url, username, password, duckdb_db_path)
 
 # load ledgers and currencies from db
-con: duckdb.DuckDBPyConnection = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
+df_ledgers: pd.DataFrame = pd.DataFrame()
+df_currencies: pd.DataFrame = pd.DataFrame()
+con: duckdb.DuckDBPyConnection = None
 try:
-    df_ledgers = con.execute(
-        "SELECT lg.LedgerId, lg.Name, lg.CurrencyCode, lg.accountedperiodtype FROM ledgers lg where lg.LedgerId in (select distinct ledger_id from ldf)").fetchdf()
-    df_currencies = con.execute("SELECT CurrencyCode, Name FROM currencies").fetchdf()
+    con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
+    try:
+        df_ledgers = con.execute(
+            "SELECT lg.LedgerId, lg.Name, lg.CurrencyCode, lg.accountedperiodtype FROM ledgers lg where lg.LedgerId in (select distinct ledger_id from ldf)").fetchdf()
+        df_currencies = con.execute("SELECT CurrencyCode, Name FROM currencies").fetchdf()
+    except duckdb.Error as e:
+        print(f"Error executing DuckDB query: {str(e)}")
+        raise
+    except Exception as e:
+        print(f"Unexpected error occurred: {str(e)}")
+        raise
 finally:
-    con.close()
+    if con is not None:
+        try:
+            con.close()
+        except Exception as e:
+            print(f"Error closing database connection: {str(e)}")
 
-# ------------------------------------------------------
 # Initialize the Dash app
 dbc_css = "https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates/dbc.min.css"
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP, dbc_css])
