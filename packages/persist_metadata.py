@@ -13,7 +13,7 @@ import re
 logging.basicConfig(level=logging.INFO)
 
 
-def load_lg_list_to_dataframe(file_path: str):
+def load_lg_list_to_dataframe(file_path: str) -> pd.DataFrame:
     """
     Loads the LG list from a JSON-like file into a pandas DataFrame.
 

@@ -39,11 +39,11 @@ def load_metadata(df: pd.DataFrame):
         # Construct the full API URL
         segment_api_url: str = construct_api_url(base_api_url, segments_endpoint) + segment + '/child/values'
         # Fetch the ledger data
-        segment_list: list = fetch_api_data(segment_api_url, username, password,
-                                            segments_query_params)  # , verify_ssl=verify_ssl)
+        segment_list: list[str] = fetch_api_data(segment_api_url, username, password,
+                                                 segments_query_params)  # , verify_ssl=verify_ssl)
         if segment_list:
             # Load the items into a pandas DataFrame
-            segment_df = pd.DataFrame(segment_list)
+            segment_df: pd.DataFrame = pd.DataFrame(segment_list)
             # Write the DataFrame to DuckDB
             save_dataframe_to_duckdb(segment_df, duckdb_db_path, table_name=segment, if_exists='replace')
 
@@ -51,26 +51,28 @@ def load_metadata(df: pd.DataFrame):
     ledgers_api_url: str = construct_api_url(base_api_url, ledgers_endpoint)
 
     # Fetch the ledger data
-    ledgers_list: list = fetch_api_data(ledgers_api_url, username, password,
-                                        ledgers_query_params)  # , verify_ssl=verify_ssl)
+    ledgers_list: list[str] = fetch_api_data(ledgers_api_url, username, password,
+                                             ledgers_query_params)  # , verify_ssl=verify_ssl)
 
     if ledgers_list:
         # Load the items into a pandas DataFrame
-        df = pd.DataFrame(ledgers_list)
+        df: pd.DataFrame = pd.DataFrame(ledgers_list)
         # Write the DataFrame to DuckDB
         save_dataframe_to_duckdb(df, duckdb_db_path, table_name=ledgers_table, if_exists='replace')
-
+        logging.info('Ledgers loaded into DuckDB')
     periods_api_url: str = construct_api_url(base_api_url, periods_endpoint)
-    periods_list: list = fetch_api_data(periods_api_url, username, password, periods_query_params)
+    periods_list: list[str] = fetch_api_data(periods_api_url, username, password, periods_query_params)
     if periods_list:
         df = pd.DataFrame(periods_list)
         save_dataframe_to_duckdb(df, duckdb_db_path, table_name='accounting_periods', if_exists='replace')
-
+        logging.info('Accounting periods loaded into DuckDB')
     currencies_api_url: str = construct_api_url(base_api_url, currencies_endpoint)
-    currencies_list: list = fetch_api_data(currencies_api_url, username, password, currencies_query_params)
+    currencies_list: list[str] = fetch_api_data(currencies_api_url, username, password, currencies_query_params)
     if currencies_list:
-        df = pd.DataFrame(currencies_list)
+        df: pd.DataFrame = pd.DataFrame(currencies_list)
         save_dataframe_to_duckdb(df, duckdb_db_path, table_name='currencies', if_exists='replace')
+        logging.info('Currencies loaded into DuckDB')
+    logging.info('Metadata loaded into DuckDB')
 
 
 if __name__ == "__main__":
@@ -78,19 +80,19 @@ if __name__ == "__main__":
     load_environment_variables()
 
     # Retrieve variables from environment
-    base_api_url = get_env_variable('BASE_API_URL')
-    username = get_env_variable('ORACLE_FUSION_USERNAME')
-    password = get_env_variable('ORACLE_FUSION_PASSWORD')
+    base_api_url: str = get_env_variable('BASE_API_URL')
+    username: str = get_env_variable('ORACLE_FUSION_USERNAME')
+    password: str = get_env_variable('ORACLE_FUSION_PASSWORD')
     verify_ssl = get_env_variable('VERIFY_SSL', required=False)
-    duckdb_db_path = get_env_variable('DUCKDB_DB_PATH', required=False) or 'ledgers.duckdb'
+    duckdb_db_path: str = get_env_variable('DUCKDB_DB_PATH', required=False) or 'ledgers.duckdb'
 
     # Load json with ledgers definitions
-    l_file_path = 'lg_list.json'  # Replace with your file path if different
-    ldf = load_lg_list_to_dataframe(l_file_path)
-    ldf = ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=False)
+    l_file_path: str = 'lg_list.json'  # Replace with your file path if different
+    ldf: pd.DataFrame = load_lg_list_to_dataframe(l_file_path)
+    ldf: pd.DataFrame = ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=False)
 
     # todo
-    # load_metadata(ldf)
+    load_metadata(ldf)
 
     # load ledgers and currencies from db
     con: duckdb.DuckDBPyConnection = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
