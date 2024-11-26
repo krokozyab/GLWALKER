@@ -92,7 +92,7 @@ if __name__ == "__main__":
     ldf: pd.DataFrame = ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=False)
 
     # todo
-    load_metadata(ldf)
+    # load_metadata(ldf)
 
     # load ledgers and currencies from db
     con: duckdb.DuckDBPyConnection = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
@@ -117,7 +117,7 @@ if __name__ == "__main__":
 
         dbc.Row([
             dbc.Col([
-                html.Label("Ledger:"),
+                dbc.Label("Ledger:"),
                 dcc.Dropdown(
                     id='ledger-dropdown',
                     options=[
@@ -131,7 +131,7 @@ if __name__ == "__main__":
 
                 )], width=2),
             dbc.Col([
-                html.Label("Currency:"),
+                dbc.Label("Currency:"),
                 dcc.Dropdown(
                     id='currency-dropdown',
                     options=[
@@ -146,13 +146,13 @@ if __name__ == "__main__":
                 )], width=2),
 
             dbc.Col([
-                html.Label("Currency type:"),
+                dbc.Label("Currency type:"),
                 dcc.RadioItems(id='balance-type', options=['Total', 'Entered', 'From'], value='Total', persistence=True,
                                persistence_type='memory')], width=2, style={'width': '130px'}),
             dbc.Col([
-                html.Label("From currency:"),
-                html.Label(" "),
-                html.Label(" "),
+                dbc.Label("From currency:"),
+                dbc.Label(" "),
+                dbc.Label(" "),
                 dcc.Dropdown(
                     id='from-currency-dropdown',
                     options=[
@@ -167,11 +167,11 @@ if __name__ == "__main__":
                 )], width=2),
 
             dbc.Col([
-                html.Label("Balance type:"),
+                dbc.Label("Balance type:"),
                 dcc.RadioItems(id='flex_mode', options=['Detail', 'Summary'], value='Detail', persistence=True,
                                persistence_type='memory')], width=2, align="start"),
             dbc.Col([
-                html.Label("Periods range:"),
+                dbc.Label("Periods range:"),
                 html.Div([
                     dcc.Dropdown(
                         id='period-from-dropdown',
@@ -221,29 +221,35 @@ if __name__ == "__main__":
         # Store component to hold the selected periods in session storage
         dcc.Store(id='periods-store', storage_type='memory', data=[]),
         # Store to hold ldf DataFrame
-        dcc.Store(id='ldf-store', data=ldf.to_dict('records')),
+        dcc.Store(id='ldf-store', data=[]),  # ldf.to_dict('records')
         # Store to hold df_ledgers DataFrame
         dcc.Store(id='df_ledgers-store', data=df_ledgers.to_dict('records')),
         html.Div(id='dummy-div'),  # A div that triggered callback at page load
-
     ])
 
-
-    # Callback to load data on page load
+    # Callback to load metadata on page load
     @app.callback(
         Output('ldf-store', 'data'),
         Input('dummy-div', 'children')  # This triggers the callback upon page load
     )
     def load_data_on_page_load(_):
         # Load json with ledgers definitions
-        l_file_path: str = 'lg_list.json'  # Replace with your file path if different
-        ldf: pd.DataFrame = load_lg_list_to_dataframe(l_file_path)
-        ldf: pd.DataFrame = ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=False)
+        v_l_file_path: str = 'lg_list.json'  # Replace with your file path if different
+        v_ldf: pd.DataFrame = load_lg_list_to_dataframe(v_l_file_path)
+        v_ldf: pd.DataFrame = v_ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=False)
         # Convert DataFrame to dictionary to store in dcc.Store
-        ldf_dict = ldf.to_dict('records')
-        logging.info(f"Config file: {l_file_path}' loaded.")
-        logging.info(ldf.iloc[0].to_dict())
-        return ldf_dict
+        v_ldf_dict = v_ldf.to_dict('records')
+        logging.info(f"Config file: {v_l_file_path}' loaded.")
+        logging.info(v_ldf.iloc[0].to_dict())
+        # load ledgers and currencies from db
+        v_con: duckdb.DuckDBPyConnection = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
+        try:
+            v_df_ledgers = v_con.execute(
+                "SELECT lg.LedgerId, lg.Name, lg.CurrencyCode, lg.accountedperiodtype FROM ledgers lg where lg.LedgerId in (select distinct ledger_id from v_ldf)").fetchdf()
+            v_df_currencies = v_con.execute("SELECT CurrencyCode, Name FROM currencies").fetchdf()
+        finally:
+            v_con.close()
+        return v_ldf_dict
 
 
     def generate_combinations(values: list, ids: list, ledger_id: int, xldf: pd.DataFrame) -> list:
@@ -568,20 +574,22 @@ if __name__ == "__main__":
         Output('currency-dropdown', 'value'),
         Input('ledger-dropdown', 'value'),
         State('flex_from_dropdown', 'children'),
+        State('ldf-store', 'data'),
         prevent_initial_call=True
     )
-    def update_output(selected_ledger_id, flex_from_dropdown):
+    def update_output(selected_ledger_id, flex_from_dropdown, p_ldf):
         global currency_code
         if selected_ledger_id is None:
             return None, None  # "No ledger selected."
 
         # Fetch ledger details based on selected ID
-        ledger = df_ledgers[df_ledgers['LedgerId'] == selected_ledger_id].iloc[0]
+        # ledger = df_ledgers[df_ledgers['LedgerId'] == selected_ledger_id].iloc[0]
 
         patched_children = Patch()
         patched_children.clear()  # remove previous selections
 
-        ledger_df = ldf[ldf['ledger_id'] == selected_ledger_id]
+        xldf = pd.DataFrame(p_ldf)
+        ledger_df = xldf[xldf['ledger_id'] == selected_ledger_id]
         for index, row in ledger_df.iterrows():
             vs_vals = get_flex_values(row['VALUE_SET_NAME'])
             new_element = html.Div([
@@ -603,7 +611,6 @@ if __name__ == "__main__":
             # Fetch ledger details based on selected ID
             currency_code = df_ledgers[df_ledgers['LedgerId'] == selected_ledger_id].iloc[0]['CurrencyCode']
             # currency_code:str = (ledger['CurrencyCode'])
-
         return patched_children, currency_code
 
 
@@ -637,15 +644,9 @@ if __name__ == "__main__":
         if not ledger_store_data:
             raise PreventUpdate  # No update if ledger_store_data is empty or None
 
-        # Extract ledger_id
-        ledger_id = ledger_store_data  # Adjust this if 'ledger-store' has a different structure
-
-        if ledger_id is None:
-            raise PreventUpdate  # No update if ledger_id is None
-
         # Connect to DuckDB
         try:
-            con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
+            v_con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
         except Exception as e:
             # Handle connection errors
             logging.error(f"Error connecting to DuckDB: {e}' was not found.")
@@ -661,15 +662,14 @@ if __name__ == "__main__":
                 WHERE lg.ledgerid = ?
                 ORDER BY ap.periodyear DESC, ap.periodnumber DESC
             '''
-            df_periods = con.execute(query, [ledger_id]).fetchdf()
+            df_periods = v_con.execute(query, [ledger_store_data]).fetchdf()
         except Exception as e:
             # Handle query execution errors
             logging.error(f"Error executing query: {e}' was not found.")
-            con.close()
+            v_con.close()
             raise PreventUpdate
-
         finally:
-            con.close()
+            v_con.close()
 
         if df_periods.empty:
             return []  # Return empty list if no periods found

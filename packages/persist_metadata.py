@@ -133,7 +133,7 @@ def fetch_api_data(url: str, username: str, password: str, params=None, verify_s
         except KeyError as e:
             logging.error(f"Missing expected key in response: {e}")
             raise
-
+    logging.info(f"Total items fetched: {len(all_items)}")
     return all_items
 
 
