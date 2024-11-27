@@ -1,24 +1,21 @@
-import sys
-from pathlib import Path
+#import sys
+#from pathlib import Path
 
-from packages.prepare_df import generate_combinations, get_periods_list, prepare_df
+from packages.prepare_df import prepare_df
 
-sys.path.append(str(Path(__file__).parent))
+#sys.path.append(str(Path(__file__).parent))
 from pathlib import Path
-import dash_dangerously_set_inner_html
 import pandas as pd
-from packages.account_balances import construct_params
-from packages.config import base_api_url, duckdb_db_path, username, password
+from packages.config import  duckdb_db_path
 from packages.duck_select import execute_sql_query
-from packages.endpoints import balances_endpoint
-from packages.persist_metadata import construct_api_url, fetch_api_data, load_lg_list_to_dataframe
+from packages.persist_metadata import load_lg_list_to_dataframe
 import duckdb
 import dash
 from dash import dcc, html, Patch
 from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
+import dash_dangerously_set_inner_html
 import logging
-from itertools import chain
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import pygwalker as pyg
@@ -159,12 +156,34 @@ app.layout = dbc.Container([
 
     dbc.Row([
         dbc.Col([
-            html.Div(id="data_table_div")
+            dcc.Loading(
+                id="loading-main-table",
+                type="default",
+                children=html.Div(id="data_table_div"),
+                style={
+                    "position": "fixed",
+                    "top": "50%",
+                    "left": "50%",
+                    "transform": "translate(-50%, -50%)",
+                    "zIndex": 9999  # Ensures the spinner is always above other elements
+                }
+            ),
         ], width=12)
     ]),
     dbc.Row([
         dbc.Col([
-            html.Div(id="pygwalker_div")
+            dcc.Loading(
+                id="loading-pygwalker",
+                type="default",
+                children=html.Div(id="pygwalker_div"),
+                style={
+                    "position": "fixed",
+                    "top": "50%",
+                    "left": "50%",
+                    "transform": "translate(-50%, -50%)",
+                    "zIndex": 9999  # Ensures the spinner is always above other elements
+                }
+            )
         ], width=12)
     ]),
 
@@ -214,8 +233,8 @@ def load_data_on_page_load(_):
     State('df_ledgers-store', 'data'),
     prevent_initial_call=True
 )
-def display_flex_values(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
-                        p_balance_type, p_from_currency, p_ldf, p_df_ledgers):
+def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
+                  p_balance_type, p_from_currency, p_ldf, p_df_ledgers):
     """
     Shows datatable on button click
     :param p_ldf:
@@ -243,21 +262,27 @@ def display_flex_values(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p
 
     df = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to, p_balance_type,
                     p_from_currency, p_currency, p_flex_mode)
+    if df is not None and not df.empty:
+        new_element = html.Div([
 
-    new_element = html.Div([
+            dag.AgGrid(
+                id="main-table",
+                rowData=df.to_dict("records"),
+                columnDefs=[{"field": i,  'filter': True} for i in df.columns],
+                className="ag-theme-alpine",
+                columnSize="sizeToFit",
+                defaultColDef={"editable": False, "resizable": True, "sortable": True, "filter": True, "minWidth": 100},
+                dashGridOptions={"pagination": True, "paginationPageSize": 50, "rowHeight": 30, "autoSizePadding": 10},
+                style={"height": "400px", "width": "100%"},
+                enableEnterpriseModules=True,
+                licenseKey='you must byu me!',
+            )
 
-        dag.AgGrid(
-            id="main-table",
-            rowData=df.to_dict("records"),
-            columnDefs=[{"field": i} for i in df.columns],
-            className="ag-theme-alpine-light"
-        ),
-        dcc.Loading(
-            id="loading-1",
-            type="default"
-        )
-
-    ])
+        ])
+    else:
+        new_element = html.Div([
+            html.P("No data to display.")
+        ])
     patched_children.append(new_element)
     return patched_children
 
@@ -279,8 +304,8 @@ def display_flex_values(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p
     State('df_ledgers-store', 'data'),
     prevent_initial_call=True
 )
-def display_pyg_values(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
-                       p_balance_type, p_from_currency, p_ldf, p_df_ledgers):
+def display_pygwalker(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
+                      p_balance_type, p_from_currency, p_ldf, p_df_ledgers):
     """
     Shows pygwalker on button click
     :param p_df_ledgers:
@@ -330,9 +355,9 @@ def display_pyg_values(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_
     State('ldf-store', 'data'),
     prevent_initial_call=True
 )
-def update_output(selected_ledger_id, flex_from_dropdown, p_ldf):
-    global currency_code
-    if selected_ledger_id is None:
+def update_output(p_selected_ledger_id, flex_from_dropdown, p_ldf):
+    v_currency_code: str = ''
+    if p_selected_ledger_id is None:
         return None, None  # "No ledger selected."
 
     # Fetch ledger details based on selected ID
@@ -341,8 +366,8 @@ def update_output(selected_ledger_id, flex_from_dropdown, p_ldf):
     patched_children = Patch()
     patched_children.clear()  # remove previous selections
 
-    xldf = pd.DataFrame(p_ldf)
-    ledger_df = xldf[xldf['ledger_id'] == selected_ledger_id]
+    v_ldf = pd.DataFrame(p_ldf)
+    ledger_df = v_ldf[v_ldf['ledger_id'] == p_selected_ledger_id]
     for index, row in ledger_df.iterrows():
         vs_vals = get_flex_values(row['VALUE_SET_NAME'])
         new_element = html.Div([
@@ -361,10 +386,8 @@ def update_output(selected_ledger_id, flex_from_dropdown, p_ldf):
         ])
         patched_children.append(new_element)
 
-        # Fetch ledger details based on selected ID
-        currency_code = df_ledgers[df_ledgers['LedgerId'] == selected_ledger_id].iloc[0]['CurrencyCode']
-        # currency_code:str = (ledger['CurrencyCode'])
-    return patched_children, currency_code
+        v_currency_code: str = df_ledgers[df_ledgers['LedgerId'] == p_selected_ledger_id].iloc[0]['CurrencyCode']
+    return patched_children, v_currency_code
 
 
 # Define callback to update ledger_id storage and enable currency dropdown

@@ -10,7 +10,6 @@ from pathlib import Path
 from config import duckdb_db_path
 
 
-
 def execute_sql_query(sql_query: str) -> pd.DataFrame:
     logging.info(Path.cwd() / duckdb_db_path)
 

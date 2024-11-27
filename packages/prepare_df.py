@@ -41,6 +41,7 @@ def generate_combinations(values: list, ids: list, ledger_id: int, xldf: pd.Data
     combinations_strings = ['.'.join(comb) for comb in combinations]
     return combinations_strings
 
+
 def get_periods_list(p_ledger_id: str, p_period_from: str, p_period_to: str, p_df_ledgers: pd.DataFrame) -> list:
     # Fetch ledger accountedperiodtype based on selected ID
     # v_accountedperiodtype: str = df_ledgers[df_ledgers['LedgerId'] == p_ledger_id].iloc[0]['AccountedPeriodType']
@@ -63,8 +64,10 @@ def get_periods_list(p_ledger_id: str, p_period_from: str, p_period_to: str, p_d
     finally:
         v_con.close()
 
+
 def prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to, p_balance_type,
                p_from_currency, p_currency, p_flex_mode) -> pd.DataFrame:
+    df: pd.DataFrame = pd.DataFrame()
     all_balances = []
     # Fetch ledger name based on selected ID
     xdf_ledgers = pd.DataFrame(p_df_ledgers)

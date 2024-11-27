@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 import pandas as pd
 
 from packages.endpoints import segments_endpoint, segments_query_params, ledgers_endpoint, ledgers_query_params, \
