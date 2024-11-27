@@ -17,7 +17,8 @@ import dash_bootstrap_components as dbc
 import pygwalker as pyg
 
 # Configure logging to output to console with level INFO
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 # Load json with ledgers definitions
 l_file_path: str = 'lg_list.json'  # Replace with your file path if different
@@ -43,17 +44,17 @@ try:
             "SELECT lg.LedgerId, lg.Name, lg.CurrencyCode, lg.accountedperiodtype FROM ledgers lg where lg.LedgerId "
             "in (select distinct ledger_id from ldf)").fetchdf()
     except duckdb.Error as e:
-        logging.error(f"Error executing DuckDB query: {str(e)}")
+        logger.error(f"Error executing DuckDB query: {str(e)}")
         raise
     except Exception as e:
-        logging.error(f"Unexpected error occurred: {str(e)}")
+        logger.error(f"Unexpected error occurred: {str(e)}")
         raise
 finally:
     if con is not None:
         try:
             con.close()
         except Exception as e:
-            logging.error(f"Error closing database connection: {str(e)}")
+            logger.error(f"Error closing database connection: {str(e)}")
 
 # Initialize the Dash app
 dbc_css = "https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates/dbc.min.css"
@@ -223,7 +224,7 @@ app.layout = dbc.Container([
     Output("loading-valuesets_spin", "children"), [Input("load_vsets_btn", "n_clicks")],
     prevent_initial_call=True
 )
-def load_valuesets(n_clicks):
+def load_valuesets(n_clicks: int):
     if n_clicks:
         load_metadata(ldf, base_api_url, username, password, duckdb_db_path)
         return None
@@ -235,8 +236,8 @@ def load_valuesets(n_clicks):
     Input("acc_flex_btn", "n_clicks"),
     [State("offcanvas", "is_open")],
 )
-def toggle_offcanvas(n1, is_open):
-    logging.info(f"acc_flex_btn: {n1}")
+def toggle_offcanvas(n1: int, is_open: bool):
+    logger.info(f"acc_flex_btn: {n1}")
     if n1:
         return not is_open
     return is_open
@@ -254,8 +255,8 @@ def load_data_on_page_load(_):
     v_ldf: pd.DataFrame = v_ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=False)
     # Convert DataFrame to dictionary to store in dcc.Store
     v_ldf_dict = v_ldf.to_dict('records')
-    logging.info(f"Config file: {v_l_file_path}' loaded.")
-    logging.info(v_ldf.iloc[0].to_dict())
+    logger.info(f"Config file: {v_l_file_path}' loaded.")
+    logger.info(v_ldf.iloc[0].to_dict())
     return v_ldf_dict
 
 
@@ -276,7 +277,7 @@ def load_data_on_page_load(_):
     State('df_ledgers-store', 'data'),
     prevent_initial_call=True
 )
-def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
+def display_table(n_clicks: int, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
                   p_balance_type, p_from_currency, p_ldf, p_df_ledgers):
     """
     Shows datatable on button click
@@ -303,10 +304,11 @@ def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_perio
     patched_children = Patch()
     patched_children.clear()  # remove previous selections
 
-    df = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to, p_balance_type,
-                    p_from_currency, p_currency, p_flex_mode)
+    df: pd.DataFrame = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to,
+                                  p_balance_type,
+                                  p_from_currency, p_currency, p_flex_mode)
     if df is not None and not df.empty:
-        new_element = html.Div([
+        new_element: html.Div = html.Div([
 
             dag.AgGrid(
                 id="main-table",
@@ -315,7 +317,7 @@ def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_perio
                 className="ag-theme-alpine",
                 columnSize="sizeToFit",
                 defaultColDef={"editable": False, "resizable": True, "sortable": True, "filter": True, "minWidth": 100},
-                dashGridOptions={"pagination": True, "paginationPageSize": 50, "rowHeight": 30, "autoSizePadding": 10},
+                dashGridOptions={"pagination": True, "paginationPageSize": 50, "rowHeight": 30, "autoSizePadding": 10, "groupIncludeFooter": True, "groupIncludeTotalFooter": True},
                 style={"height": "400px", "width": "100%"},
                 enableEnterpriseModules=True,  # demo only! remove for switch to free version
                 licenseKey='you must byu me!',  # demo only! remove for switch to free version
@@ -323,7 +325,7 @@ def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_perio
 
         ])
     else:
-        new_element = html.Div([
+        new_element: html.Div = html.Div([
             html.P("No data to display.")
         ])
     patched_children.append(new_element)
@@ -347,7 +349,7 @@ def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_perio
     State('df_ledgers-store', 'data'),
     prevent_initial_call=True
 )
-def display_pygwalker(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
+def display_pygwalker(n_clicks: int, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
                       p_balance_type, p_from_currency, p_ldf, p_df_ledgers):
     """
     Shows pygwalker on button click
@@ -371,8 +373,9 @@ def display_pygwalker(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_p
     if not p_values or not p_ids:
         return "No values selected."
 
-    df = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to, p_balance_type,
-                    p_from_currency, p_currency, p_flex_mode)
+    df: pd.DataFrame = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to,
+                                  p_balance_type,
+                                  p_from_currency, p_currency, p_flex_mode)
 
     patched_children = Patch()
     patched_children.clear()  # remove previous selections
@@ -380,11 +383,11 @@ def display_pygwalker(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_p
         # html_code = pyg.walk(df,  use_kernel_calc=True, return_html=True).to_html()
         html_code = pyg.walk(df, return_html=True).to_html()
 
-        new_element = html.Div([
+        new_element: html.Div = html.Div([
             dash_dangerously_set_inner_html.DangerouslySetInnerHTML(html_code)
         ])
     else:
-        new_element = html.Div([
+        new_element: html.Div = html.Div([
             html.P("No data to display.")
         ])
 
@@ -474,7 +477,7 @@ def get_periods(ledger_store_data):
         v_con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
     except Exception as e:
         # Handle connection errors
-        logging.error(f"Error connecting to DuckDB: {e}' was not found.")
+        logger.error(f"Error connecting to DuckDB: {e}' was not found.")
         raise PreventUpdate
 
     try:
@@ -490,7 +493,7 @@ def get_periods(ledger_store_data):
         df_periods = v_con.execute(query, [ledger_store_data]).fetchdf()
     except Exception as e:
         # Handle query execution errors
-        logging.error(f"Error executing query: {e}' was not found.")
+        logger.error(f"Error executing query: {e}' was not found.")
         v_con.close()
         raise PreventUpdate
     finally:
@@ -557,7 +560,7 @@ def get_flex_values(flex_table: str) -> list:
         v_con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
     except Exception as e:
         # Handle connection errors
-        logging.error(f"Error connecting to DuckDB: {e}")
+        logger.error(f"Error connecting to DuckDB: {e}")
         raise PreventUpdate
     try:
         query = f'SELECT VALUE, DESCRIPTION FROM {flex_table}'
@@ -572,7 +575,7 @@ def get_flex_values(flex_table: str) -> list:
                    val_df.iterrows()]
         return options
     except Exception as e:
-        logging.error(f"Error retrieving flex values: {e}")
+        logger.error(f"Error retrieving flex values: {e}")
         return []
     finally:
         v_con.close()

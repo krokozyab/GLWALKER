@@ -11,6 +11,8 @@ from packages.config import base_api_url, username, password, duckdb_db_path
 from packages.endpoints import balances_endpoint
 from packages.persist_metadata import construct_api_url, fetch_api_data
 
+logger = logging.getLogger(__name__)
+
 
 def generate_combinations(values: list, ids: list, ledger_id: int, xldf: pd.DataFrame) -> list:
     """
@@ -74,14 +76,14 @@ def prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from,
     ledger_name: str = xdf_ledgers[xdf_ledgers['LedgerId'] == p_ledger_id].iloc[0]['Name']
     # Generate ac flex combinations
     combinations_strings = generate_combinations(p_values, p_ids, p_ledger_id, pd.DataFrame(p_ldf))
-    logging.info(combinations_strings)
+    logger.info(combinations_strings)
     # Fetch periods list
     periods_list: list = get_periods_list(p_ledger_id, p_period_from, p_period_to, xdf_ledgers)
     if p_balance_type == 'From':
         balance_type = f'From {p_from_currency}'
     else:
         balance_type = p_balance_type
-    logging.info(balance_type)
+    logger.info(balance_type)
     for period in periods_list:
         for combination in combinations_strings:
             balances_api_url: str = construct_api_url(base_api_url, balances_endpoint)

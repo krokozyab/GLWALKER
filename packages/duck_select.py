@@ -9,10 +9,10 @@ import pandas as pd
 from pathlib import Path
 from config import duckdb_db_path
 
+logger = logging.getLogger(__name__)
+
 
 def execute_sql_query(sql_query: str) -> pd.DataFrame:
-    logging.info(Path.cwd() / duckdb_db_path)
-
     con: duckdb.DuckDBPyConnection = None
 
     try:
@@ -24,11 +24,11 @@ def execute_sql_query(sql_query: str) -> pd.DataFrame:
         return result_df
 
     except duckdb.Error as e:
-        logging.error(f"Error executing DuckDB query: {str(e)}")
+        logger.error(f"Error executing DuckDB query: {str(e)}")
         return pd.DataFrame()
 
     except Exception as e:
-        logging.error(f"Unexpected error occurred: {str(e)}")
+        logger.error(f"Unexpected error occurred: {str(e)}")
         return pd.DataFrame()
 
     finally:
@@ -36,4 +36,4 @@ def execute_sql_query(sql_query: str) -> pd.DataFrame:
             try:
                 con.close()
             except Exception as e:
-                logging.error(f"Error closing database connection: {str(e)}")
+                logger.error(f"Error closing database connection: {str(e)}")
