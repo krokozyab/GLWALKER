@@ -3,11 +3,13 @@ import sys
 
 from dotenv import load_dotenv
 
+
 def load_environment_variables():
     """
     Loads environment variables from a .env file.
     """
     load_dotenv()  # Load variables from .env into environment
+
 
 def get_env_variable(var_name, required=True):
     """
