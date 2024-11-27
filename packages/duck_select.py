@@ -24,11 +24,11 @@ def execute_sql_query(sql_query: str) -> pd.DataFrame:
         return result_df
 
     except duckdb.Error as e:
-        print(f"Error executing DuckDB query: {str(e)}")
+        logging.error(f"Error executing DuckDB query: {str(e)}")
         return pd.DataFrame()
 
     except Exception as e:
-        print(f"Unexpected error occurred: {str(e)}")
+        logging.error(f"Unexpected error occurred: {str(e)}")
         return pd.DataFrame()
 
     finally:
@@ -36,4 +36,4 @@ def execute_sql_query(sql_query: str) -> pd.DataFrame:
             try:
                 con.close()
             except Exception as e:
-                print(f"Error closing database connection: {str(e)}")
+                logging.error(f"Error closing database connection: {str(e)}")

@@ -1,12 +1,8 @@
-#import sys
-#from pathlib import Path
-
+from packages.load_metadata import load_metadata
 from packages.prepare_df import prepare_df
-
-#sys.path.append(str(Path(__file__).parent))
 from pathlib import Path
 import pandas as pd
-from packages.config import  duckdb_db_path
+from packages.config import duckdb_db_path, base_api_url, username, password
 from packages.duck_select import execute_sql_query
 from packages.persist_metadata import load_lg_list_to_dataframe
 import duckdb
@@ -35,24 +31,29 @@ ldf: pd.DataFrame = ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=
 df_ledgers: pd.DataFrame = pd.DataFrame()
 df_currencies = execute_sql_query("SELECT CurrencyCode, Name FROM currencies")
 
+if df_currencies is None or df_currencies.empty:  # naively assume the database is broken or empty kinda migration
+    load_metadata(ldf, base_api_url, username, password, duckdb_db_path)
+    df_currencies = execute_sql_query("SELECT CurrencyCode, Name FROM currencies")  # and try again
+
 con: duckdb.DuckDBPyConnection = None
 try:
     con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
     try:
         df_ledgers = con.execute(
-            "SELECT lg.LedgerId, lg.Name, lg.CurrencyCode, lg.accountedperiodtype FROM ledgers lg where lg.LedgerId in (select distinct ledger_id from ldf)").fetchdf()
+            "SELECT lg.LedgerId, lg.Name, lg.CurrencyCode, lg.accountedperiodtype FROM ledgers lg where lg.LedgerId "
+            "in (select distinct ledger_id from ldf)").fetchdf()
     except duckdb.Error as e:
-        print(f"Error executing DuckDB query: {str(e)}")
+        logging.error(f"Error executing DuckDB query: {str(e)}")
         raise
     except Exception as e:
-        print(f"Unexpected error occurred: {str(e)}")
+        logging.error(f"Unexpected error occurred: {str(e)}")
         raise
 finally:
     if con is not None:
         try:
             con.close()
         except Exception as e:
-            print(f"Error closing database connection: {str(e)}")
+            logging.error(f"Error closing database connection: {str(e)}")
 
 # Initialize the Dash app
 dbc_css = "https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates/dbc.min.css"
@@ -63,7 +64,7 @@ app.title = "Ledger Selector"
 # Define the layout
 app.layout = dbc.Container([
 
-    dbc.Row([dbc.Col(html.H2("Ledger Selection Dashboard"), width=12)]),
+    dbc.Row([dbc.Col(html.H3("GL Walker"), width=12)]),
 
     dbc.Row([
         dbc.Col([
@@ -77,8 +78,27 @@ app.layout = dbc.Container([
                 placeholder="Select a ledger",
                 persistence=True,  # Enable persistence for the dropdown value
                 persistence_type='memory',  # Store the value in session storage
-                value=None  # Default value; can set to a specific ledger_id if desired
+                value=None,  # Default value; can set to a specific ledger_id if desired
             )], width=2),
+        dbc.Col([
+            dbc.Label("Periods range:"),
+            html.Div([
+                dcc.Dropdown(
+                    id='period-from-dropdown',
+                    options=[],
+                    placeholder="Select a period from",
+                    persistence=True,  # Enable persistence for the dropdown value
+                    persistence_type='memory',  # Store the value in session storage
+                    value=None
+                ),
+                dcc.Dropdown(
+                    id='period-to-dropdown',
+                    options=[],
+                    placeholder="Select a period to",
+                    persistence=True,  # Enable persistence for the dropdown value
+                    persistence_type='memory',  # Store the value in session storage
+                    value=None
+                )], id="periods_container")], width=2, align="start"),
         dbc.Col([
             dbc.Label("Currency:"),
             dcc.Dropdown(
@@ -119,39 +139,38 @@ app.layout = dbc.Container([
             dbc.Label("Balance type:"),
             dcc.RadioItems(id='flex_mode', options=['Detail', 'Summary'], value='Detail', persistence=True,
                            persistence_type='memory')], width=2, align="start"),
-        dbc.Col([
-            dbc.Label("Periods range:"),
-            html.Div([
-                dcc.Dropdown(
-                    id='period-from-dropdown',
-                    options=[],
-                    placeholder="Select a period from",
-                    persistence=True,  # Enable persistence for the dropdown value
-                    persistence_type='memory',  # Store the value in session storage
-                    value=None
-                ),
-                dcc.Dropdown(
-                    id='period-to-dropdown',
-                    options=[],
-                    placeholder="Select a period to",
-                    persistence=True,  # Enable persistence for the dropdown value
-                    persistence_type='memory',  # Store the value in session storage
-                    value=None
-                )], id="periods_container")], width=2, align="start"),
     ]),
-    html.Hr(style={'borderTop': '1px solid #ccc', 'margin': '20px 0'}),
+    # html.Hr(style={'borderTop': '1px solid #ccc', 'margin': '20px 0'}),
 
     dbc.Row([
-        dbc.Col([
-            html.Div(id='flex_from_dropdown')
-        ], width=4),
-        dbc.Col([
-            dbc.Button("Table", id="list_flex_btn", n_clicks=0)
-        ], width=2),
-        dbc.Col([
-            dbc.Button("Pyg", id="pyg_flex_btn", n_clicks=0)
-        ], width=2)
+        dbc.Offcanvas(
+            dbc.Col([
+                html.Div(id='flex_from_dropdown')
+            ], width=4),
 
+            id="offcanvas",
+            title="Flex Segments",
+            is_open=False,
+            placement="start",
+            style={"width": "40%"}
+        ),
+        dbc.ButtonGroup([
+            # dbc.Col([
+            dbc.Button("Enter accounts range", id="acc_flex_btn", n_clicks=0, color="info", disabled=True),
+            # ], width=2),
+
+            # dbc.Col([
+            dbc.Button("AG Grid Table", id="list_flex_btn", n_clicks=0, style={"marginLeft": "4px"}, disabled=True),
+            # ], width=2),
+            # dbc.Col([
+            dbc.Button("Pygwalker", id="pyg_flex_btn", n_clicks=0, style={"marginLeft": "4px"}, disabled=True),
+            # ], width=2)
+            html.Div([
+                dbc.Button("Load/Refresh Valuesets", id="load_vsets_btn", n_clicks=0, style={"marginLeft": "4px"},
+                           color="info"),
+                dbc.Spinner(html.Div(id="loading-valuesets_spin")),
+            ])
+        ], style={"marginTop": "2px"})
     ]),
 
     dbc.Row([
@@ -159,7 +178,7 @@ app.layout = dbc.Container([
             dcc.Loading(
                 id="loading-main-table",
                 type="default",
-                children=html.Div(id="data_table_div"),
+                children=html.Div(id="data_table_div", style={"marginTop": "2px"}),
                 style={
                     "position": "fixed",
                     "top": "50%",
@@ -175,7 +194,7 @@ app.layout = dbc.Container([
             dcc.Loading(
                 id="loading-pygwalker",
                 type="default",
-                children=html.Div(id="pygwalker_div"),
+                children=html.Div(id="pygwalker_div", style={"marginTop": "2px"}),
                 style={
                     "position": "fixed",
                     "top": "50%",
@@ -197,6 +216,30 @@ app.layout = dbc.Container([
     dcc.Store(id='df_ledgers-store', data=df_ledgers.to_dict('records')),
     html.Div(id='dummy-div'),  # A div that triggered callback at page load
 ])
+
+
+# Callback to load valuesets in local database
+@app.callback(
+    Output("loading-valuesets_spin", "children"), [Input("load_vsets_btn", "n_clicks")],
+    prevent_initial_call=True
+)
+def load_valuesets(n_clicks):
+    if n_clicks:
+        load_metadata(ldf, base_api_url, username, password, duckdb_db_path)
+        return None
+
+
+# Callback to open the offcanvas
+@app.callback(
+    Output("offcanvas", "is_open"),
+    Input("acc_flex_btn", "n_clicks"),
+    [State("offcanvas", "is_open")],
+)
+def toggle_offcanvas(n1, is_open):
+    logging.info(f"acc_flex_btn: {n1}")
+    if n1:
+        return not is_open
+    return is_open
 
 
 # Callback to load metadata on page load
@@ -268,14 +311,14 @@ def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_perio
             dag.AgGrid(
                 id="main-table",
                 rowData=df.to_dict("records"),
-                columnDefs=[{"field": i,  'filter': True} for i in df.columns],
+                columnDefs=[{"field": i, 'filter': True} for i in df.columns],
                 className="ag-theme-alpine",
                 columnSize="sizeToFit",
                 defaultColDef={"editable": False, "resizable": True, "sortable": True, "filter": True, "minWidth": 100},
                 dashGridOptions={"pagination": True, "paginationPageSize": 50, "rowHeight": 30, "autoSizePadding": 10},
                 style={"height": "400px", "width": "100%"},
-                enableEnterpriseModules=True,
-                licenseKey='you must byu me!',
+                enableEnterpriseModules=True,  # demo only! remove for switch to free version
+                licenseKey='you must byu me!',  # demo only! remove for switch to free version
             )
 
         ])
@@ -333,23 +376,29 @@ def display_pygwalker(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_p
 
     patched_children = Patch()
     patched_children.clear()  # remove previous selections
+    if df is not None and not df.empty:
+        # html_code = pyg.walk(df,  use_kernel_calc=True, return_html=True).to_html()
+        html_code = pyg.walk(df, return_html=True).to_html()
 
-    # html_code = pyg.walk(df,  use_kernel_calc=True, return_html=True).to_html()
-    html_code = pyg.walk(df, return_html=True).to_html()
-
-    new_element = html.Div([
-        dash_dangerously_set_inner_html.DangerouslySetInnerHTML(html_code)
-    ])
+        new_element = html.Div([
+            dash_dangerously_set_inner_html.DangerouslySetInnerHTML(html_code)
+        ])
+    else:
+        new_element = html.Div([
+            html.P("No data to display.")
+        ])
 
     patched_children.append(new_element)
-
     return patched_children
 
 
-# Define callback to update output based on ledger selection
+# Define callback to update output based on ledger selection, enable buttons
 @app.callback(
     Output('flex_from_dropdown', 'children'),
     Output('currency-dropdown', 'value'),
+    Output('acc_flex_btn', 'disabled'),
+    Output('list_flex_btn', 'disabled'),
+    Output('pyg_flex_btn', 'disabled'),
     Input('ledger-dropdown', 'value'),
     State('flex_from_dropdown', 'children'),
     State('ldf-store', 'data'),
@@ -381,13 +430,14 @@ def update_output(p_selected_ledger_id, flex_from_dropdown, p_ldf):
                 multi=True,
                 value='%',
                 persistence=True,
-                persistence_type='memory'
+                persistence_type='memory',
+                style={"width": "580px"}  # Set desired width of the dropdown, e.g., 600px
             )
         ])
         patched_children.append(new_element)
 
         v_currency_code: str = df_ledgers[df_ledgers['LedgerId'] == p_selected_ledger_id].iloc[0]['CurrencyCode']
-    return patched_children, v_currency_code
+    return patched_children, v_currency_code, False, False, False
 
 
 # Define callback to update ledger_id storage and enable currency dropdown
