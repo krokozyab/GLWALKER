@@ -2,9 +2,7 @@
 import logging
 import sys
 from pathlib import Path
-
 from packages.db_connection import DuckDBConnection
-
 sys.path.append(str(Path(__file__).parent))
 import duckdb
 import pandas as pd

@@ -1,5 +1,3 @@
-import pandas as pd
-
 from packages.endpoints import balances_query_params
 
 

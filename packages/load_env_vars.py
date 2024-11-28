@@ -5,6 +5,7 @@ import sys
 from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
+
 def load_environment_variables():
     """
     Loads environment variables from a .env file.
