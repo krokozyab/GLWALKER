@@ -21,9 +21,6 @@ import pygwalker as pyg
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# todo
-# load_metadata(ldf, base_api_url, username, password, duckdb_db_path)
-
 # load ledgers and currencies from db
 df_ledgers: pd.DataFrame = pd.DataFrame()
 df_currencies = execute_sql_query("SELECT CurrencyCode, Name FROM currencies")
