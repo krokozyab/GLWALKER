@@ -90,9 +90,17 @@ This project is licensed under the MIT License. See the LICENSE file for more de
 If you have questions, feel free to reach out via GitHub Issues or [email@rudenko.s@gmail.com].
 
 
-test pic
+## Sample screen shots
+
+
 ![1-st screen](images/1.png)
------------------------------
-![1-st screen](images/2.png)
-=======
-master
+
+
+![2-st screen](images/2.png)
+
+
+![3-st screen](images/3.png)
+
+
+![4-st screen](images/4.png)
+
