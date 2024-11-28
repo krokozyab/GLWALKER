@@ -4,8 +4,7 @@ Oracle Fusion GL Balance API visualizer
 
 ## Overview
 
-This repository contains a Python Dash application. Dash is a Python framework for building web applications with highly interactive data visualizations. This guide will walk you through the process of installing the required dependencies and running the application on your local machine.
-
+This repository contains a Python **Dash** application. Dash is a Python framework for building web applications with highly interactive data visualizations. The application also utilizes **Ag-Grid** for powerful data grid features, **Pygwalker** for visual data exploration, **Pandas** for data manipulation, **DuckDB** for efficient SQL-based querying, and integrates with the Oracle Fusion Ledger Balances API ([API Documentation](https://docs.oracle.com/en/cloud/saas/financials/24c/farfa/op-ledgerbalances-get.html)) to retrieve ledger balance data. This guide will walk you through the process of installing the required dependencies and running the application on your local machine.
 Prerequisites
 
 To run this application, you need the following software installed:
@@ -54,6 +53,9 @@ If you don't have a requirements.txt file, create one by running:
 
 This will save all your current Python environment dependencies.
 
+### Step 4: Configure the `.env` File
+Create a `.env` file by following the provided `sample.env` file, ensuring that all necessary environment variables are correctly defined.
+
 ## Running the Application
 
 To start the Dash application, run the following command:
@@ -72,19 +74,19 @@ If you need to modify the application, edit the Python scripts in the repository
 
 ModuleNotFoundError: Ensure you are in the virtual environment and all dependencies are installed properly.
 
-Port Issue: If 8050 is in use, you can change the port in the app.run_server() function:
+Port Issue: If `8050` is in use, you can change the port in the app.run_server() function:
 
 `app.run_server(debug=True, port=8051)`
 
-Contributing
+## Contributing
 
 Feel free to submit pull requests to contribute to the project. For major changes, please open an issue first to discuss what you would like to change.
 
-License
+## License
 
 This project is licensed under the MIT License. See the LICENSE file for more details.
 
-Contact
+## Contact
 
 If you have questions, feel free to reach out via GitHub Issues or [email@rudenko.s@gmail.com].
 
