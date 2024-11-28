@@ -9,7 +9,6 @@ from requests.auth import HTTPBasicAuth
 import duckdb
 import re
 
-# Configure logging to output to console with level INFO
 logger = logging.getLogger(__name__)
 
 

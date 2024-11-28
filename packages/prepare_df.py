@@ -1,13 +1,9 @@
 import itertools
 import logging
 from itertools import chain
-
 import pandas as pd
-import duckdb
-from pathlib import Path
-
 from packages.account_balances import construct_params
-from packages.config import base_api_url, username, password, duckdb_db_path
+from packages.config import base_api_url, username, password
 from packages.duck_select import execute_sql_query
 from packages.endpoints import balances_endpoint
 from packages.persist_metadata import construct_api_url, fetch_api_data
@@ -16,13 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 def generate_combinations(values: list, ids: list, ledger_id: int, xldf: pd.DataFrame) -> list:
-    """
-    :param xldf:
-    :param ledger_id:
-    :param values:
-    :param ids:
-    :return:
-    """
     predefined_order: list = xldf[xldf['ledger_id'] == ledger_id]["VALUE_SET_NAME"].tolist()
     # Define the predefined order of indices
     # Create a mapping from index to values

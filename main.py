@@ -1,12 +1,9 @@
-from packages.db_connection import DuckDBConnection
 from packages.load_metadata import load_metadata
 from packages.prepare_df import prepare_df
-from pathlib import Path
 import pandas as pd
 from packages.config import duckdb_db_path, base_api_url, username, password, ldf
 from packages.duck_select import execute_sql_query
 from packages.persist_metadata import load_lg_list_to_dataframe
-import duckdb
 import dash
 from dash import dcc, html, Patch
 from dash.dependencies import Input, Output, State, ALL
