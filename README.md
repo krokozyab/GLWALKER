@@ -1,6 +1,5 @@
 # GLWALKER
 Oracle Fusion GL Balance API visualizer
- 28_11_24
 
 ## Overview
 
