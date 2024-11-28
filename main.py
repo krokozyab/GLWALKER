@@ -295,7 +295,7 @@ def display_table(n_clicks: int, p_values, p_ids, p_ledger_id, p_period_from, p_
                                  "groupIncludeFooter": True, "groupIncludeTotalFooter": True},
                 style={"height": "400px", "width": "100%"},
                 enableEnterpriseModules=True,  # demo only! remove for switch to free version
-                licenseKey='you must byu me!',  # demo only! remove for switch to free version
+                licenseKey='you must buy a license for the AG Grid Enterprise version!',  # demo only! remove for switch to free version
             )
 
         ])
