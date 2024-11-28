@@ -191,24 +191,3 @@ def save_dataframe_to_duckdb(df: pd.DataFrame, db_path: str, table_name: str = '
 
     except Exception as e:
         logger.error(f"Failed to write DataFrame to DuckDB: {e}")
-
-
-def query_duckdb(db_path, query):
-    """
-    Executes a SQL query on the specified DuckDB database.
-
-    Parameters:
-    - db_path (str): Path to the DuckDB database file.
-    - query (str): The SQL query to execute.
-
-    Returns:
-    - pd.DataFrame: The result of the SQL query.
-    """
-    try:
-        con = duckdb.connect(database=db_path, read_only=True)
-        result = con.execute(query).fetchdf()
-        con.close()
-        return result
-    except Exception as e:
-        print(f"Failed to execute query on DuckDB: {e}")
-        return None

@@ -1,8 +1,9 @@
+import logging
 import os
 import sys
 
 from dotenv import load_dotenv
-
+logger = logging.getLogger(__name__)
 
 def load_environment_variables():
     """
@@ -27,6 +28,6 @@ def get_env_variable(var_name, required=True):
     """
     value = os.getenv(var_name)
     if required and not value:
-        print(f"Error: The environment variable '{var_name}' is missing.")
+        logger.error(f"Error: The environment variable '{var_name}' is missing.")
         sys.exit(1)
     return value

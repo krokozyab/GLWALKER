@@ -8,6 +8,7 @@ from pathlib import Path
 
 from packages.account_balances import construct_params
 from packages.config import base_api_url, username, password, duckdb_db_path
+from packages.duck_select import execute_sql_query
 from packages.endpoints import balances_endpoint
 from packages.persist_metadata import construct_api_url, fetch_api_data
 
@@ -50,21 +51,18 @@ def get_periods_list(p_ledger_id: str, p_period_from: str, p_period_to: str, p_d
     v_accountedperiodtype: str = p_df_ledgers[p_df_ledgers['LedgerId'] == p_ledger_id].iloc[0]['AccountedPeriodType']
 
     # load ledgers and currencies from db
-    v_con: duckdb.DuckDBPyConnection = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
-    try:
-        query = """
-                SELECT PeriodNameId 
-                FROM accounting_periods
-                WHERE StartDate >= (SELECT StartDate FROM accounting_periods WHERE PeriodNameId=?)
-                AND EndDate <= (SELECT EndDate FROM accounting_periods WHERE PeriodNameId=?)
-                AND PeriodType = ?
-                ORDER BY StartDate
-            """
-        v_periods: list = v_con.execute(query, [p_period_from, p_period_to, v_accountedperiodtype]).fetchnumpy()[
-            'PeriodNameId'].tolist()
-        return v_periods
-    finally:
-        v_con.close()
+    query = """
+                    SELECT PeriodNameId 
+                    FROM accounting_periods
+                    WHERE StartDate >= (SELECT StartDate FROM accounting_periods WHERE PeriodNameId=?)
+                    AND EndDate <= (SELECT EndDate FROM accounting_periods WHERE PeriodNameId=?)
+                    AND PeriodType = ?
+                    ORDER BY StartDate
+                """
+    v_periods: list = execute_sql_query(query, [p_period_from, p_period_to, v_accountedperiodtype])['PeriodNameId'].tolist()
+
+    return v_periods
+
 
 
 def prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to, p_balance_type,
