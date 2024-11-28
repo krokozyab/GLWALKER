@@ -5,7 +5,7 @@ Oracle Fusion GL Balance API visualizer
 ## Overview
 
 This repository contains a Python **Dash** application. Dash is a Python framework for building web applications with highly interactive data visualizations. The application also utilizes **Ag-Grid** for powerful data grid features, **Pygwalker** for visual data exploration, **Pandas** for data manipulation, **DuckDB** for efficient SQL-based querying, and integrates with the Oracle Fusion Ledger Balances API ([API Documentation](https://docs.oracle.com/en/cloud/saas/financials/24c/farfa/op-ledgerbalances-get.html)) to retrieve ledger balance data. This guide will walk you through the process of installing the required dependencies and running the application on your local machine.
-Prerequisites
+## Prerequisites
 
 To run this application, you need the following software installed:
 
@@ -21,8 +21,6 @@ Follow these steps to set up the application locally.
 First, clone the repository from GitHub to your local machine. You can do this by running the following command in your terminal:
 
 `git clone https://github.com/krokozyab/GLWALKER.git`
-
-Replace your-username/your-repository-name with the actual GitHub URL of your repository.
 
 ### Step 2: Set Up a Virtual Environment
 
@@ -56,6 +54,8 @@ This will save all your current Python environment dependencies.
 ### Step 4: Configure the `.env` File
 Create a `.env` file by following the provided `sample.env` file, ensuring that all necessary environment variables are correctly defined.
 
+### Step 4: Configure the `gl_list.json` File
+The `gl_list.json` file represents the Chart of Accounts (COA) structure. Since there is no available API to retrieve this information, it must be configured manually. A SQL script (`gl_ledger_struct.sql`) has been provided to help obtain the necessary attributes. You can execute this script within the Fusion OTBI data model to extract the required data. Then, use the provided sample file (`lg_list_sample.json`) as a reference to create the final `lg_list.json` file.
 ## Running the Application
 
 To start the Dash application, run the following command:
