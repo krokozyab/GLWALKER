@@ -10,7 +10,7 @@ import duckdb
 import re
 
 # Configure logging to output to console with level INFO
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def load_lg_list_to_dataframe(file_path: str) -> pd.DataFrame:
@@ -45,11 +45,11 @@ def load_lg_list_to_dataframe(file_path: str) -> pd.DataFrame:
         return df
 
     except FileNotFoundError:
-        logging.error(f"Error: The file '{file_path}' was not found.")
+        logger.error(f"Error: The file '{file_path}' was not found.")
     except json.JSONDecodeError as jde:
-        logging.error(f"Error decoding JSON: {jde}")
+        logger.error(f"Error decoding JSON: {jde}")
     except Exception as e:
-        logging.error(f"An unexpected error occurred: {e}")
+        logger.error(f"An unexpected error occurred: {e}")
 
 
 def construct_api_url(base_url: str, endpoint: str) -> str:
@@ -125,15 +125,15 @@ def fetch_api_data(url: str, username: str, password: str, params=None, verify_s
             offset += 500
 
         except requests.exceptions.RequestException as e:
-            logging.error(f"Error making request: {e}")
+            logger.error(f"Error making request: {e}")
             raise
         except ValueError as e:
-            logging.error(f"Error parsing JSON response: {e}")
+            logger.error(f"Error parsing JSON response: {e}")
             raise
         except KeyError as e:
-            logging.error(f"Missing expected key in response: {e}")
+            logger.error(f"Missing expected key in response: {e}")
             raise
-    logging.info(f"Total items fetched: {len(all_items)}")
+    logger.info(f"Total items fetched: {len(all_items)}")
     return all_items
 
 
@@ -181,7 +181,7 @@ def save_dataframe_to_duckdb(df: pd.DataFrame, db_path: str, table_name: str = '
         else:
             raise ValueError("if_exists parameter must be one of 'fail', 'replace', or 'append'.")
 
-        logging.info(f"Data successfully written to DuckDB table '{table_name}' in database '{db_path}'.")
+        logger.info(f"Data successfully written to DuckDB table '{table_name}' in database '{db_path}'.")
 
         # Unregister the temporary DataFrame to clean up
         con.unregister('temp_df')
@@ -190,25 +190,4 @@ def save_dataframe_to_duckdb(df: pd.DataFrame, db_path: str, table_name: str = '
         con.close()
 
     except Exception as e:
-        logging.error(f"Failed to write DataFrame to DuckDB: {e}")
-
-
-def query_duckdb(db_path, query):
-    """
-    Executes a SQL query on the specified DuckDB database.
-
-    Parameters:
-    - db_path (str): Path to the DuckDB database file.
-    - query (str): The SQL query to execute.
-
-    Returns:
-    - pd.DataFrame: The result of the SQL query.
-    """
-    try:
-        con = duckdb.connect(database=db_path, read_only=True)
-        result = con.execute(query).fetchdf()
-        con.close()
-        return result
-    except Exception as e:
-        print(f"Failed to execute query on DuckDB: {e}")
-        return None
+        logger.error(f"Failed to write DataFrame to DuckDB: {e}")

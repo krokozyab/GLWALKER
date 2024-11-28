@@ -1,8 +1,9 @@
+from packages.db_connection import DuckDBConnection
 from packages.load_metadata import load_metadata
 from packages.prepare_df import prepare_df
 from pathlib import Path
 import pandas as pd
-from packages.config import duckdb_db_path, base_api_url, username, password
+from packages.config import duckdb_db_path, base_api_url, username, password, ldf
 from packages.duck_select import execute_sql_query
 from packages.persist_metadata import load_lg_list_to_dataframe
 import duckdb
@@ -17,12 +18,8 @@ import dash_bootstrap_components as dbc
 import pygwalker as pyg
 
 # Configure logging to output to console with level INFO
-logging.basicConfig(level=logging.INFO)
-
-# Load json with ledgers definitions
-l_file_path: str = 'lg_list.json'  # Replace with your file path if different
-ldf: pd.DataFrame = load_lg_list_to_dataframe(l_file_path)
-ldf: pd.DataFrame = ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=False)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 # todo
 # load_metadata(ldf, base_api_url, username, password, duckdb_db_path)
@@ -33,27 +30,11 @@ df_currencies = execute_sql_query("SELECT CurrencyCode, Name FROM currencies")
 
 if df_currencies is None or df_currencies.empty:  # naively assume the database is broken or empty kinda migration
     load_metadata(ldf, base_api_url, username, password, duckdb_db_path)
-    df_currencies = execute_sql_query("SELECT CurrencyCode, Name FROM currencies")  # and try again
+    df_currencies = execute_sql_query("SELECT CurrencyCode, Name FROM currencies")
 
-con: duckdb.DuckDBPyConnection = None
-try:
-    con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
-    try:
-        df_ledgers = con.execute(
-            "SELECT lg.LedgerId, lg.Name, lg.CurrencyCode, lg.accountedperiodtype FROM ledgers lg where lg.LedgerId "
-            "in (select distinct ledger_id from ldf)").fetchdf()
-    except duckdb.Error as e:
-        logging.error(f"Error executing DuckDB query: {str(e)}")
-        raise
-    except Exception as e:
-        logging.error(f"Unexpected error occurred: {str(e)}")
-        raise
-finally:
-    if con is not None:
-        try:
-            con.close()
-        except Exception as e:
-            logging.error(f"Error closing database connection: {str(e)}")
+df_ledgers = execute_sql_query(
+    "SELECT lg.LedgerId, lg.Name, lg.CurrencyCode, lg.accountedperiodtype FROM ledgers lg where lg.LedgerId "
+    "in (select distinct ledger_id from ldf)")
 
 # Initialize the Dash app
 dbc_css = "https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates/dbc.min.css"
@@ -223,7 +204,7 @@ app.layout = dbc.Container([
     Output("loading-valuesets_spin", "children"), [Input("load_vsets_btn", "n_clicks")],
     prevent_initial_call=True
 )
-def load_valuesets(n_clicks):
+def load_valuesets(n_clicks: int):
     if n_clicks:
         load_metadata(ldf, base_api_url, username, password, duckdb_db_path)
         return None
@@ -235,8 +216,8 @@ def load_valuesets(n_clicks):
     Input("acc_flex_btn", "n_clicks"),
     [State("offcanvas", "is_open")],
 )
-def toggle_offcanvas(n1, is_open):
-    logging.info(f"acc_flex_btn: {n1}")
+def toggle_offcanvas(n1: int, is_open: bool):
+    logger.info(f"acc_flex_btn: {n1}")
     if n1:
         return not is_open
     return is_open
@@ -254,8 +235,8 @@ def load_data_on_page_load(_):
     v_ldf: pd.DataFrame = v_ldf.sort_values(by=['ledger_id', 'SEGMENT_NUMBER'], inplace=False)
     # Convert DataFrame to dictionary to store in dcc.Store
     v_ldf_dict = v_ldf.to_dict('records')
-    logging.info(f"Config file: {v_l_file_path}' loaded.")
-    logging.info(v_ldf.iloc[0].to_dict())
+    logger.info(f"Config file: {v_l_file_path}' loaded.")
+    logger.info(v_ldf.iloc[0].to_dict())
     return v_ldf_dict
 
 
@@ -276,7 +257,7 @@ def load_data_on_page_load(_):
     State('df_ledgers-store', 'data'),
     prevent_initial_call=True
 )
-def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
+def display_table(n_clicks: int, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
                   p_balance_type, p_from_currency, p_ldf, p_df_ledgers):
     """
     Shows datatable on button click
@@ -303,10 +284,11 @@ def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_perio
     patched_children = Patch()
     patched_children.clear()  # remove previous selections
 
-    df = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to, p_balance_type,
-                    p_from_currency, p_currency, p_flex_mode)
+    df: pd.DataFrame = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to,
+                                  p_balance_type,
+                                  p_from_currency, p_currency, p_flex_mode)
     if df is not None and not df.empty:
-        new_element = html.Div([
+        new_element: html.Div = html.Div([
 
             dag.AgGrid(
                 id="main-table",
@@ -315,7 +297,8 @@ def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_perio
                 className="ag-theme-alpine",
                 columnSize="sizeToFit",
                 defaultColDef={"editable": False, "resizable": True, "sortable": True, "filter": True, "minWidth": 100},
-                dashGridOptions={"pagination": True, "paginationPageSize": 50, "rowHeight": 30, "autoSizePadding": 10},
+                dashGridOptions={"pagination": True, "paginationPageSize": 50, "rowHeight": 30, "autoSizePadding": 10,
+                                 "groupIncludeFooter": True, "groupIncludeTotalFooter": True},
                 style={"height": "400px", "width": "100%"},
                 enableEnterpriseModules=True,  # demo only! remove for switch to free version
                 licenseKey='you must byu me!',  # demo only! remove for switch to free version
@@ -323,7 +306,7 @@ def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_perio
 
         ])
     else:
-        new_element = html.Div([
+        new_element: html.Div = html.Div([
             html.P("No data to display.")
         ])
     patched_children.append(new_element)
@@ -347,7 +330,7 @@ def display_table(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_perio
     State('df_ledgers-store', 'data'),
     prevent_initial_call=True
 )
-def display_pygwalker(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
+def display_pygwalker(n_clicks: int, p_values, p_ids, p_ledger_id, p_period_from, p_period_to, p_flex_mode, p_currency,
                       p_balance_type, p_from_currency, p_ldf, p_df_ledgers):
     """
     Shows pygwalker on button click
@@ -371,8 +354,9 @@ def display_pygwalker(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_p
     if not p_values or not p_ids:
         return "No values selected."
 
-    df = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to, p_balance_type,
-                    p_from_currency, p_currency, p_flex_mode)
+    df: pd.DataFrame = prepare_df(p_df_ledgers, p_ledger_id, p_values, p_ids, p_ldf, p_period_from, p_period_to,
+                                  p_balance_type,
+                                  p_from_currency, p_currency, p_flex_mode)
 
     patched_children = Patch()
     patched_children.clear()  # remove previous selections
@@ -380,11 +364,11 @@ def display_pygwalker(n_clicks, p_values, p_ids, p_ledger_id, p_period_from, p_p
         # html_code = pyg.walk(df,  use_kernel_calc=True, return_html=True).to_html()
         html_code = pyg.walk(df, return_html=True).to_html()
 
-        new_element = html.Div([
+        new_element: html.Div = html.Div([
             dash_dangerously_set_inner_html.DangerouslySetInnerHTML(html_code)
         ])
     else:
-        new_element = html.Div([
+        new_element: html.Div = html.Div([
             html.P("No data to display.")
         ])
 
@@ -417,6 +401,7 @@ def update_output(p_selected_ledger_id, flex_from_dropdown, p_ldf):
 
     v_ldf = pd.DataFrame(p_ldf)
     ledger_df = v_ldf[v_ldf['ledger_id'] == p_selected_ledger_id]
+
     for index, row in ledger_df.iterrows():
         vs_vals = get_flex_values(row['VALUE_SET_NAME'])
         new_element = html.Div([
@@ -431,7 +416,7 @@ def update_output(p_selected_ledger_id, flex_from_dropdown, p_ldf):
                 value='%',
                 persistence=True,
                 persistence_type='memory',
-                style={"width": "580px"}  # Set desired width of the dropdown, e.g., 600px
+                style={"width": "580px"}
             )
         ])
         patched_children.append(new_element)
@@ -469,32 +454,15 @@ def get_periods(ledger_store_data):
     if not ledger_store_data:
         raise PreventUpdate  # No update if ledger_store_data is empty or None
 
-    # Connect to DuckDB
-    try:
-        v_con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
-    except Exception as e:
-        # Handle connection errors
-        logging.error(f"Error connecting to DuckDB: {e}' was not found.")
-        raise PreventUpdate
-
-    try:
-        # Execute the query with parameter substitution to prevent SQL injection
-        query = '''
-            SELECT ap.periodnameid AS period 
-            FROM accounting_periods ap
-            JOIN ledgers lg 
-                ON (ap.periodsetnameid = lg.periodsetname AND ap.periodtype = lg.accountedperiodtype)
-            WHERE lg.ledgerid = ?
-            ORDER BY ap.periodyear DESC, ap.periodnumber DESC
-        '''
-        df_periods = v_con.execute(query, [ledger_store_data]).fetchdf()
-    except Exception as e:
-        # Handle query execution errors
-        logging.error(f"Error executing query: {e}' was not found.")
-        v_con.close()
-        raise PreventUpdate
-    finally:
-        v_con.close()
+    query = '''
+                SELECT ap.periodnameid AS period 
+                FROM accounting_periods ap
+                JOIN ledgers lg 
+                    ON (ap.periodsetnameid = lg.periodsetname AND ap.periodtype = lg.accountedperiodtype)
+                WHERE lg.ledgerid = ?
+                ORDER BY ap.periodyear DESC, ap.periodnumber DESC
+            '''
+    df_periods = execute_sql_query(query, [ledger_store_data])
 
     if df_periods.empty:
         return []  # Return empty list if no periods found
@@ -552,30 +520,15 @@ def get_flex_values(flex_table: str) -> list:
     Returns:
     - A list of dictionaries formatted for Dropdown options, e.g., [{'label': 'FlexValue1', 'value': 'FlexValue1'}, ...]
     """
-    # Connect to DuckDB
-    try:
-        v_con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
-    except Exception as e:
-        # Handle connection errors
-        logging.error(f"Error connecting to DuckDB: {e}")
-        raise PreventUpdate
-    try:
-        query = f'SELECT VALUE, DESCRIPTION FROM {flex_table}'
-        val_df = v_con.execute(query).fetchdf()
-        v_con.close()
+    val_df = execute_sql_query(f'SELECT VALUE, DESCRIPTION FROM {flex_table}')
 
-        if val_df.empty:
-            return []  # Return empty list if no flex values found
+    if val_df.empty:
+        return []  # Return empty list if no flex values found
 
-        # Convert the DataFrame to a list of options
-        options = [{'label': row['Value'] + ' ' + str(row['Description']), 'value': row['Value']} for _, row in
-                   val_df.iterrows()]
-        return options
-    except Exception as e:
-        logging.error(f"Error retrieving flex values: {e}")
-        return []
-    finally:
-        v_con.close()
+    # Convert the DataFrame to a list of options
+    options = [{'label': row['Value'] + ' ' + str(row['Description']), 'value': row['Value']} for _, row in
+               val_df.iterrows()]
+    return options
 
 
 if __name__ == "__main__":

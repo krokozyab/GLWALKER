@@ -3,37 +3,26 @@ import logging
 import sys
 from pathlib import Path
 
+from packages.db_connection import DuckDBConnection
+
 sys.path.append(str(Path(__file__).parent))
 import duckdb
 import pandas as pd
-from pathlib import Path
-from config import duckdb_db_path
+from config import duckdb_db_path, ldf
+
+logger = logging.getLogger(__name__)
 
 
-def execute_sql_query(sql_query: str) -> pd.DataFrame:
-    logging.info(Path.cwd() / duckdb_db_path)
-
-    con: duckdb.DuckDBPyConnection = None
-
+def execute_sql_query(sql_query: str, parameters: list = None) -> pd.DataFrame:
+    df = pd.DataFrame()
     try:
-        # Connect to the DuckDB database
-        con = duckdb.connect(database=Path.cwd() / duckdb_db_path, read_only=False)
-
-        # Execute the provided SQL query and fetch the results into a DataFrame
-        result_df = con.execute(sql_query).fetchdf()
-        return result_df
-
+        with DuckDBConnection(Path.cwd() / duckdb_db_path) as conn:
+            df = conn.execute(sql_query, parameters).fetchdf()
     except duckdb.Error as e:
-        logging.error(f"Error executing DuckDB query: {str(e)}")
-        return pd.DataFrame()
-
+        logger.error(f"Error executing DuckDB query: {str(e)}")
+        return df
     except Exception as e:
-        logging.error(f"Unexpected error occurred: {str(e)}")
-        return pd.DataFrame()
-
-    finally:
-        if con is not None:
-            try:
-                con.close()
-            except Exception as e:
-                logging.error(f"Error closing database connection: {str(e)}")
+        logger.error(f"Unexpected error occurred: {str(e)}")
+        return df
+    logger.info(f"Query executed successfully: {sql_query}")
+    return df

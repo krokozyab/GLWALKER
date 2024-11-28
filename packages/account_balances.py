@@ -55,24 +55,3 @@ def construct_params(p_combination: str, p_accounting_period: str, p_currency: s
     # Step 5: Update the original dictionary
     balances_query_params['finder'] = finder_str_updated
     return balances_query_params
-
-
-""""
-# test
-print(construct_params('101.%.%.%.%.33.%.%', 'Jun-23', 'EUR', 'US Primary Ledger', 'Detail', 'Total'))
-
-load_environment_variables()
-
-# Retrieve variables from environment
-base_api_url = get_env_variable('BASE_API_URL')
-username = get_env_variable('ORACLE_FUSION_USERNAME')
-password = get_env_variable('ORACLE_FUSION_PASSWORD')
-verify_ssl = get_env_variable('VERIFY_SSL', required=False)
-duckdb_db_path = get_env_variable('DUCKDB_DB_PATH', required=False) or 'ledgers.duckdb'
-
-balances_api_url: str = construct_api_url(base_api_url, balances_endpoint)
-balances_list: list = fetch_api_data(balances_api_url, username, password, construct_params('239.%.%.%.%.%.%.%', 'Jun-24', 'USD', 'US Primary Ledger', 'Detail', 'Total'))
-if balances_list:
-    df = pd.DataFrame(balances_list)
-    save_dataframe_to_duckdb(df, duckdb_db_path, table_name='balances_test', if_exists='replace')
-"""
