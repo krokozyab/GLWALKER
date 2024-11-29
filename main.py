@@ -410,7 +410,7 @@ def update_output(p_selected_ledger_id, flex_from_dropdown, p_ldf):
                 value='%',
                 persistence=True,
                 persistence_type='memory',
-                style={"width": "580px"}
+                style={"width": "560px"}
             )
         ])
         patched_children.append(new_element)
